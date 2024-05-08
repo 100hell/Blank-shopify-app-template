@@ -1,0 +1,326 @@
+{{ 'web-product-label.css' | asset_url | stylesheet_tag }}
+
+<script>
+let AppUrl = "https://happening-operator-vat-avon.trycloudflare.com/";
+let templateName = "{{ template.name}}";
+let tempshopName = "{{ shop.url }}";
+let appSettingsData = {};
+let sortedPaidLabels = [];
+let shopnameArr = tempshopName.split("/");
+let shopName = shopnameArr[shopnameArr.length - 1];
+let priorityArray = [];
+
+let label_skeleton = `<div class="label_skeleton_container">
+      <div class="skeleton"></div>
+  </div>`;
+let text_label = `<div class="textLabel">
+  <span class="textLabel_txt"></span>
+</div>`;
+let img_label = `<div class="imageLabel">
+  <div class="imageLabel_image_container">
+      <img src="" alt="" srcset="" style="width:100%">
+  </div>
+</div>`;
+
+async function getAppData() {
+  const res = await fetch(
+    `${AppUrl}api/store-front/store-details?shop=${shopName}`,
+    { headers: { "Content-Type": "application/json" } }
+  );
+  const jsonData = await res.json();
+  appSettingsData = jsonData;
+  priorityArray.push({
+    homePagePriority: Number(jsonData.homePagePriority),
+    allProductPriority: Number(jsonData.allProductsPriority),
+    allCollectionPriority: Number(jsonData.allCollectionsPriority),
+    selectedProductsPriority: Number(jsonData.selectedProductsPriority),
+    selectedCollectionsPriority: Number(jsonData.selectedCollectionPriority),
+  });
+  if(appSettingsData.idPaidUser){
+    getPaidLabels();
+  }else{
+    appendFreeLabels();
+  }
+  
+}
+getAppData();
+
+async function appendFreeLabels() {
+  // Label Creation code
+  let outer_div = document.createElement("span");
+  outer_div.classList.add("label_container");
+  if (appSettingsData.label_type === "text-label") {
+    outer_div.innerHTML = text_label;
+    outer_div.style.background = appSettingsData?.background_color || " ";
+    outer_div.style.color = appSettingsData?.text_color || " ";
+    outer_div.style.fontSize = `${appSettingsData?.font_size}px ` || " ";
+    outer_div.querySelector(".textLabel_txt").innerHTML =
+      appSettingsData?.label_text || "";
+  } else {
+    outer_div.innerHTML = img_label;
+    outer_div.querySelector(".imageLabel_image_container img").src =
+      `${AppUrl}${appSettingsData?.label_img}` || "";
+  }
+  outer_div.style.height = `${appSettingsData?.label_Height}%` || " ";
+  outer_div.style.width = `${appSettingsData?.label_Width}%` || " ";
+  outer_div.classList.add(appSettingsData?.label_Position || "top-left");
+  outer_div.id = appSettingsData?.label_Animation || "";
+
+  async function appendLabelToHomePageCards() {
+    let card_media = document.querySelectorAll(".card__inner .card__content");
+
+    let specificProductToShowArr = [];
+    if (!appSettingsData.AllProdFlag) {
+      appSettingsData.Products_selected.forEach((prod) => {
+        specificProductToShowArr.push(prod._id);
+      });
+    }
+    card_media.forEach((x) => {
+      if (!appSettingsData.AllProdFlag) {
+        // if(priorityArray[0].selectedProductsPriority<priorityArray[0].homePagePriority){
+        specificProductToShowArr.forEach((y) => {
+          if (x.querySelector("a").id.includes(y)) {
+            const newOuterDiv = outer_div.cloneNode(true);
+            x.appendChild(newOuterDiv);
+          }
+        });
+        // }else{
+        // const newOuterDiv = outer_div.cloneNode(true);
+        // x.appendChild(newOuterDiv);
+        // }
+      } else {
+        const newOuterDiv = outer_div.cloneNode(true);
+        x.appendChild(newOuterDiv);
+      }
+    });
+  }
+
+  async function appendLabelToCards() {
+    let card_media = document.querySelectorAll(".card__inner .card__content");
+
+    card_media.forEach((x) => {
+      const newOuterDiv = outer_div.cloneNode(true);
+      x.appendChild(newOuterDiv);
+    });
+  }
+
+  async function appendLabelToProductPage() {
+    let card_media = document.querySelector(".product-media-container ");
+    if (!card_media) {
+      card_media = document.querySelector(".product__info-container");
+    }
+    
+      const newOuterDiv = outer_div.cloneNode(true);
+      card_media.appendChild(newOuterDiv);
+    
+  }
+
+  async function appendLabelToCardsOnCollectionPageByProdId() {
+    const metaProducts = meta.products;
+    const idSet = new Set(metaProducts.map((item) => item.id.toString()));
+    const productsToShowLabel = appSettingsData?.Products_selected.filter(
+      (item) => idSet.has(item._id)
+    );
+    let card_media = document.querySelectorAll(".card__inner .card__content");
+    card_media.forEach((x) => {
+      productsToShowLabel.forEach((y) => {
+        if (x.querySelector(".card__heading").id.includes(y._id)) {
+          const newOuterDiv = outer_div.cloneNode(true);
+          x.appendChild(newOuterDiv);
+        }
+      });
+    });
+  }
+
+  if (templateName === "index") {
+    if (appSettingsData?.homePageFlag) {
+      appendLabelToHomePageCards();
+    }
+  } else if (templateName === "collection") {
+    if (appSettingsData?.AllProdFlag || appSettingsData?.AllCollectionFlag) {
+      appendLabelToCards();
+    } else {
+      let metaCollectionId = meta.page.resourceId;
+      let metaProducts = meta.products;
+      if (Number(appSettingsData?.Collection_to_display) === metaCollectionId) {
+        appendLabelToCards();
+      } else if (
+        appSettingsData?.Products_selected.some((item1) =>
+          metaProducts.some((item2) => item1._id === item2.id.toString())
+        )
+      ) {
+        appendLabelToCardsOnCollectionPageByProdId();
+      }
+    }
+  } else if (templateName === "product") {
+    let metaProductId = meta.page.resourceId.toString();
+    let idArray = [];
+    appSettingsData?.Products_selected.forEach((x) => {
+      idArray.push(x._id);
+    });
+    if (appSettingsData?.AllProdFlag) {
+      appendLabelToProductPage();
+    } else if (idArray.includes(metaProductId)) {
+      appendLabelToProductPage();
+    }
+  }
+}
+
+  function appendLabels(label){
+    
+     let outer_div = document.createElement("span");
+  outer_div.classList.add("label_container");
+  if (label.label_type === "text-label") {
+    outer_div.innerHTML = text_label;
+    outer_div.style.background = label?.background_color || " ";
+    outer_div.style.color = label?.text_color || " ";
+    outer_div.style.fontSize = `${label?.font_size}px ` || " ";
+    outer_div.querySelector(".textLabel_txt").innerHTML =
+      label?.label_text || "";
+  } else {
+    outer_div.innerHTML = img_label;
+    outer_div.querySelector(".imageLabel_image_container img").src =
+      `${AppUrl}${label?.label_img}` || "";
+  }
+  outer_div.style.height = `${label?.label_Height}%` || " ";
+  outer_div.style.width = `${label?.label_Width}%` || " ";
+  outer_div.classList.add(label?.label_Position || "top-left");
+  outer_div.id = label?.label_Animation || "";
+
+  async function appendLabelToHomePageCards() {
+    let card_media = document.querySelectorAll(".card__inner .card__content");
+
+    let specificProductToShowArr = [];
+    if (!label.AllProdFlag) {
+      label.Products_selected.forEach((prod) => {
+        specificProductToShowArr.push(prod._id);
+      });
+    }
+  
+    card_media.forEach((x) => {
+            const newOuterDiv = outer_div.cloneNode(true);
+             let labelAvailable = x.querySelector(".label_container")
+     
+if(!labelAvailable){
+            x.appendChild(newOuterDiv);
+}
+         
+        });
+        
+  }
+
+  async function appendLabelToCards() {
+    let card_media = document.querySelectorAll(".card__inner .card__content");
+    
+    card_media.forEach((x) => {
+      let labelAvailable = x.querySelector(".label_container")
+if(!labelAvailable){
+      const newOuterDiv = outer_div.cloneNode(true);
+      x.appendChild(newOuterDiv);
+}
+    });
+  
+  }
+
+  async function appendLabelToProductPage() {
+    let card_media = document.querySelector(".product-media-container ");
+    if (!card_media) {
+      card_media = document.querySelector(".product__info-container");
+    }
+    let labelAvailable = card_media.querySelector(".label_container")
+if(!labelAvailable){
+      const newOuterDiv = outer_div.cloneNode(true);
+      card_media.appendChild(newOuterDiv);
+}
+    
+  }
+
+  async function appendLabelToCardsOnCollectionPageByProdId(labelToShow) {
+ 
+    const metaProducts = meta.products;
+    const idSet = new Set(metaProducts.map((item) => item.id.toString()));
+    const productsToShowLabel = label?.Products_selected.filter(
+      (item) => idSet.has(item._id)
+    );
+   
+    let card_media = document.querySelectorAll(".card__inner .card__content");
+    card_media.forEach((x) => {
+      productsToShowLabel.forEach((y) => {
+        if (x.querySelector(".card__heading").id.includes(y._id) || x.querySelector(".card__heading a").id.includes(y._id)) {
+          const newOuterDiv = outer_div.cloneNode(true);
+          let labelAvailable = x.querySelector(".label_container");
+      
+if(!labelAvailable){
+          x.appendChild(newOuterDiv);
+}
+        }
+      });
+
+    });
+}
+  
+
+  if (templateName === "index") {
+    if (label?.homePageFlag) {
+      appendLabelToHomePageCards();
+    }
+  } else if (templateName === "collection") {
+    if (label?.AllProdFlag || label?.AllCollectionFlag) {
+      appendLabelToCards();
+    } else {
+      let metaCollectionId = meta.page.resourceId;
+      let metaProducts = meta.products;
+      if (label?.Collection_selected[0] && metaCollectionId ) {
+        let collectionToshow = label?.Collection_selected;
+        collectionToshow.forEach((x)=>{
+          if(Number(x._id) === metaCollectionId){
+            appendLabelToCards();
+          }
+        })
+        
+      } else if (
+        label?.Products_selected.some((item1) =>
+          metaProducts.some((item2) => item1._id === item2.id.toString())
+        )
+      ) {
+        appendLabelToCardsOnCollectionPageByProdId(label);
+      }
+    }
+  } else if (templateName === "product") {
+    let metaProductId = meta.page.resourceId.toString();
+    let idArray = [];
+    label?.Products_selected.forEach((x) => {
+      idArray.push(x._id);
+    });
+    if (label?.AllProdFlag) {
+      appendLabelToProductPage();
+    } else if (idArray.includes(metaProductId)) {
+      appendLabelToProductPage();
+    }
+  }
+  }
+
+  async function getPaidLabels(){
+     const res = await fetch(
+    `${AppUrl}api/store-front/get-paid-labels?shop=${shopName}`,
+    { headers: { "Content-Type": "application/json" } }
+  );
+    const jsonData = await res.json();
+    const activeLabels = jsonData.filter((x)=>x.isAciveLabel === true);
+ sortedPaidLabels  =activeLabels.sort((a, b) => {
+  if (a.label_priority === b.label_priority) {
+    return 0;
+  } else if (a.label_priority === "") {
+    return 1;
+  } else if (b.label_priority === "") {
+    return -1;
+  } else {
+    return parseInt(a.label_priority) - parseInt(b.label_priority);
+  }
+});
+
+    sortedPaidLabels.forEach((x)=>{
+      appendLabels(x);
+    })
+  }
+</script>
